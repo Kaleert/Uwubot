@@ -1,0 +1,17 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+gradlew
+gradlew.bat
+
+*.jar
+*.zip
+
+config.yml
+analyzer.yml
+complex_methods_report.txt
+project_analysis.txt
+code_analiz
+important_comments.txt
+schedule_debug_dump.txt
+split.txt

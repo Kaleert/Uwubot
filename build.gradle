@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'pro.kaleert'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = '21'
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // === NYAGRAM (Соседний проект) ===
+    // Gradle сам найдет его благодаря includeBuild в settings.gradle
+    implementation 'com.kaleert:nyagram:1.0.0'
+
+    // === SPRING BOOT ===
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // === DATABASE ===
+    implementation 'mysql:mysql-connector-java:8.0.33'
+
+    // === UTILS ===
+    // Для парсинга Excel (XLSX)
+    implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    // Для парсинга HTML (поиск ссылки на сайте)
+    implementation 'org.jsoup:jsoup:1.17.2'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Настройка для корректной кодировки при компиляции
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}

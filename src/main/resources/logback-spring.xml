@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- 🤫 ТИШИНА: Глушим лишние логи -->
+    
+    <!-- Скрываем логи запуска/остановки пула соединений -->
+    <logger name="com.zaxxer.hikari" level="ERROR"/>
+    
+    <!-- Скрываем SQL и инициализацию Hibernate -->
+    <logger name="org.hibernate" level="ERROR"/>
+    
+    <!-- Скрываем стандартные логи Spring (кроме ошибок запуска) -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.boot" level="WARN"/>
+
+    <!-- Скрываем логи команд и апдейтов (переводим в DEBUG, в консоли видно не будет) -->
+    <logger name="com.kaleert.nyagram.middleware.LoggingMiddleware" level="DEBUG"/>
+    <logger name="pro.kaleert.uwubot.service.UpdateService" level="WARN"/>
+    
+    <!-- Включаем только ошибки парсера, если они есть -->
+    <logger name="pro.kaleert.uwubot.service.parser" level="ERROR"/>
+
+</configuration>
