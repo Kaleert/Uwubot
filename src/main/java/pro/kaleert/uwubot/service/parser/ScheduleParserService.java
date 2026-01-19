@@ -30,8 +30,7 @@ public class ScheduleParserService {
         List<Lesson> lessons = new ArrayList<>();
         String dateRangeString = "Unknown";
         LocalDate weekStart = LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        
-        Map<DayOfWeek, Map<Integer, String>> bellsByDay = new TreeMap<>();
+        Map<Integer, String> bellMap = new TreeMap<>();
 
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -42,8 +41,9 @@ public class ScheduleParserService {
                 String text = getMergedValue(sheet, r, 0); 
                 Matcher m = DATE_EXTRACT_PATTERN.matcher(text);
                 if (m.find()) {
+                    String dateStr = m.group(1);
                     try {
-                        weekStart = LocalDate.parse(m.group(1), DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+                        weekStart = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("dd.MM.yyyy"));
                         dateRangeString = text.trim();
                     } catch (Exception ignored) {}
                     break;
@@ -69,6 +69,10 @@ public class ScheduleParserService {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
 
+                if (!isRowStartOfLesson(sheet, r, 1)) {
+                    continue;
+                }
+
                 String dayText = getMergedValue(sheet, r, 0);
                 DayOfWeek currentDay = parseDayOfWeek(dayText);
                 if (currentDay == null) continue;
@@ -78,14 +82,12 @@ public class ScheduleParserService {
                 if (lessonNum == 0) continue;
                 
                 String timeText = getMergedValue(sheet, r, 2).trim();
-                if (!timeText.isEmpty()) {
+                if (!timeText.isEmpty() && !bellMap.containsKey(lessonNum)) {
                     timeText = timeText.replaceAll("\\s+", ""); 
                     if (timeText.length() == 9 && !timeText.contains("-")) { 
                          timeText = timeText.substring(0, 5) + "-" + timeText.substring(5);
                     }
-                    
-                    bellsByDay.computeIfAbsent(currentDay, k -> new TreeMap<>())
-                              .put(lessonNum, timeText);
+                    bellMap.put(lessonNum, timeText);
                 }
 
                 for (Map.Entry<String, Integer> entry : groupsMap.entrySet()) {
@@ -97,7 +99,12 @@ public class ScheduleParserService {
                     String s2 = getMergedValue(sheet, r, startCol + 2);
                     String r2 = getMergedValue(sheet, r, startCol + 3);
 
+                    int teacherRowIdx = r + 1;
+                    String t1 = getMergedValue(sheet, teacherRowIdx, startCol);
+                    String t2 = getMergedValue(sheet, teacherRowIdx, startCol + 2);
+
                     String finalLessonText = buildLessonText(sheet, r, startCol, s1, r1, s2, r2);
+                    String finalTeacherText = buildTeacherText(sheet, r + 1, startCol, t1, t2);
 
                     if (finalLessonText != null) {
                         Lesson lesson = new Lesson();
@@ -105,6 +112,7 @@ public class ScheduleParserService {
                         lesson.setDayOfWeek(currentDay);
                         lesson.setLessonNumber(lessonNum);
                         lesson.setRawText(finalLessonText);
+                        lesson.setTeacher(finalTeacherText); // 🔥 Сохраняем учителя
                         lessons.add(lesson);
                     }
                 }
@@ -115,9 +123,39 @@ public class ScheduleParserService {
             throw new RuntimeException(e);
         }
 
-        String bellScheduleStr = formatBellSchedule(bellsByDay);
+        String bellScheduleStr = bellMap.entrySet().stream()
+                .map(e -> e.getKey() + ". " + e.getValue())
+                .collect(Collectors.joining("\n"));
 
         return new ScheduleBundle(lessons, dateRangeString, weekStart, bellScheduleStr);
+    }
+    
+    private boolean isRowStartOfLesson(Sheet sheet, int row, int col) {
+        for (CellRangeAddress region : sheet.getMergedRegions()) {
+            if (region.isInRange(row, col)) {
+                return region.getFirstRow() == row;
+            }
+        }
+        return true; 
+    }
+    
+    private String buildTeacherText(Sheet sheet, int row, int startCol, String t1, String t2) {
+        t1 = clean(t1); t2 = clean(t2);
+        
+        if (t1.isEmpty() && t2.isEmpty()) return "";
+
+        if (isMergedAcross(sheet, row, startCol, 3)) {
+            return t1;
+        }
+
+        if (t1.equals(t2) && !t1.isEmpty()) return t1;
+
+        String sub1 = t1.isEmpty() ? "—" : t1;
+        String sub2 = t2.isEmpty() ? "—" : t2;
+        
+        if (sub1.equals("—") && sub2.equals("—")) return "";
+        
+        return sub1 + " / " + sub2;
     }
 
     private String formatBellSchedule(Map<DayOfWeek, Map<Integer, String>> bellsByDay) {
@@ -183,15 +221,19 @@ public class ScheduleParserService {
         s1 = clean(s1); r1 = clean(r1); s2 = clean(s2); r2 = clean(r2);
         boolean isEmpty1 = s1.isEmpty();
         boolean isEmpty2 = s2.isEmpty();
+
         if (isEmpty1 && isEmpty2) return null;
+
         if (isMergedAcross(sheet, row, startCol, 3)) {
             if (r2.isEmpty()) return s1;
             return s1 + " (" + r2 + ")";
         }
+
         if (s1.equals(s2) && (r1.equals(r2) || r2.isEmpty())) {
             if (r1.isEmpty()) return s1;
             return s1 + " (" + r1 + ")";
         }
+
         StringBuilder sb = new StringBuilder();
         if (!isEmpty1) {
             sb.append(s1);
@@ -208,6 +250,7 @@ public class ScheduleParserService {
         }
         return sb.toString();
     }
+    
     private boolean isMergedAcross(Sheet sheet, int row, int col, int minWidth) {
         for (CellRangeAddress region : sheet.getMergedRegions()) {
             if (region.isInRange(row, col) && region.getFirstRow() == row && region.getFirstColumn() == col) {

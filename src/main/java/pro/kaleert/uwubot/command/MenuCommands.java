@@ -5,20 +5,19 @@ import com.kaleert.nyagram.command.CommandContext;
 import com.kaleert.nyagram.command.CommandHandler;
 import lombok.RequiredArgsConstructor;
 
-// Value не важен, так как методы будут регистрироваться по алиасам
-@BotCommand(value = "/menu_handler")
+@BotCommand
 @RequiredArgsConstructor
 public class MenuCommands {
 
     private final RaspCommand raspCommand;
     private final SettingsCommand settingsCommand;
 
-    @CommandHandler(aliases = "📅 Расписание") 
+    @CommandHandler(value = "📅 Расписание", description = "Показать расписание")
     public void onRaspButton(CommandContext context) {
         raspCommand.showSchedule(context, null);
     }
 
-    @CommandHandler(aliases = "⚙️ Настройки")
+    @CommandHandler(value = "⚙️ Настройки", description = "Открыть настройки")
     public void onSettingsButton(CommandContext context) {
         settingsCommand.execute(context);
     }

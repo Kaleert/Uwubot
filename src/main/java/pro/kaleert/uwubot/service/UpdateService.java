@@ -26,8 +26,11 @@ import java.io.InputStream;
 import java.net.URL;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -43,7 +46,6 @@ public class UpdateService {
     private final NyagramClient botClient;
     private final UwuBotConfig properties;
 
-    private static final String TARGET_URL = "https://edu.tatar.ru/n_chelny/page1577.htm/page3802376.htm";
     private static final String META_KEY = "schedule_file";
     private static final int MAX_RETRIES = 3;
 
@@ -57,34 +59,74 @@ public class UpdateService {
     }
 
     public void forceUpdate(Consumer<String> statusCallback, boolean forceDownload) {
-        statusCallback.accept("🔍 Поиск ссылки...");
+        statusCallback.accept("🔍 Поиск ссылки на сайте...");
         String fileUrl = null;
+        
         for (int i = 0; i < MAX_RETRIES; i++) {
             try {
-                Document doc = Jsoup.connect(TARGET_URL).timeout(10000).get();
-                Element link = doc.select("a[href$=.xlsx]").first();
-                if (link != null) {
-                    fileUrl = link.attr("href");
+                Document doc = Jsoup.connect(properties.getScheduleUrl()).timeout(10000).get();
+                
+                org.jsoup.select.Elements links = doc.select("a[href$=.xlsx]");
+                
+                Element bestLink = findBestLink(links);
+                
+                if (bestLink != null) {
+                    fileUrl = bestLink.attr("href");
                     if (!fileUrl.startsWith("http")) fileUrl = "https://edu.tatar.ru" + fileUrl;
+                    log.debug("Выбрана ссылка: {} (Текст: {})", fileUrl, bestLink.text());
                     break;
                 }
+                
                 try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
             } catch (Exception e) {
                 if (i == MAX_RETRIES - 1) statusCallback.accept("❌ Ошибка сайта: " + e.getMessage());
             }
         }
 
-        if (fileUrl == null) return;
+        if (fileUrl == null) {
+            statusCallback.accept("❌ Подходящая ссылка не найдена.");
+            return;
+        }
 
         try {
             ParsingMeta meta = metaRepository.findById(META_KEY)
                     .orElse(new ParsingMeta(META_KEY, "", "", "", null, "", null, null));
-            
             processNewFile(fileUrl, meta, statusCallback, forceDownload);
         } catch (Exception e) {
             log.error("Update failed", e);
             statusCallback.accept("❌ Ошибка: " + e.getMessage());
         }
+    }
+
+    private Element findBestLink(org.jsoup.select.Elements links) {
+        Element bestLink = null;
+        LocalDate maxDate = LocalDate.MIN;
+
+        Pattern datePattern = Pattern.compile("(\\d{2})[._](\\d{2})[._](\\d{4})");
+
+        for (Element link : links) {
+            String raw = link.text() + " " + link.attr("href");
+            
+            if (!raw.toLowerCase().contains("расписание")) continue;
+
+            Matcher m = datePattern.matcher(raw);
+            if (m.find()) {
+                try {
+                    int day = Integer.parseInt(m.group(1));
+                    int month = Integer.parseInt(m.group(2));
+                    int year = Integer.parseInt(m.group(3));
+                    
+                    LocalDate date = LocalDate.of(year, month, day);
+                    
+                    if (date.isAfter(maxDate)) {
+                        maxDate = date;
+                        bestLink = link;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        return bestLink != null ? bestLink : links.last();
     }
 
     public ScheduleBundle parseFileOnly(String url) throws Exception {
@@ -98,29 +140,22 @@ public class UpdateService {
     @Transactional
     public void processNewFile(String url, ParsingMeta meta, Consumer<String> statusCallback, boolean force) throws Exception {
         statusCallback.accept("📥 Скачивание...");
-        
         meta.setLastCheckTime(LocalDateTime.now());
         
         java.net.URL rawUrl = new java.net.URL(url);
         String encodedUrl = new java.net.URI(rawUrl.getProtocol(), rawUrl.getUserInfo(), rawUrl.getHost(), rawUrl.getPort(), rawUrl.getPath(), rawUrl.getQuery(), null).toASCIIString();
 
-        byte[] fileBytes = null;
-        for (int i = 0; i < MAX_RETRIES; i++) {
-            try (InputStream in = new URL(encodedUrl).openStream()) {
-                fileBytes = in.readAllBytes();
-                break;
-            } catch (Exception e) {
-                if (i == MAX_RETRIES - 1) throw e;
-                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
-            }
+        byte[] fileBytes;
+        try (InputStream in = new URL(encodedUrl).openStream()) {
+            fileBytes = in.readAllBytes();
         }
 
         String currentHash = DigestUtils.md5DigestAsHex(fileBytes);
-        
-        if (!force && currentHash.equals(meta.getLastFileHash())) {
-            log.debug("Файл не изменился (Hash: {}). Пропуск.", currentHash);
+        boolean metaIsComplete = meta.getLastBellSchedule() != null && !meta.getLastBellSchedule().isEmpty();
+
+        if (!force && currentHash.equals(meta.getLastFileHash()) && metaIsComplete) {
+            log.debug("Файл не изменился.");
             statusCallback.accept("✅ Файл не изменился.");
-            
             metaRepository.save(meta);
             return;
         }
@@ -139,7 +174,8 @@ public class UpdateService {
             }
 
             boolean isNewWeek = meta.getWeekStart() != null && !meta.getWeekStart().isEqual(newWeekStart);
-            
+
+            // Проверка звонков
             boolean bellsChanged = false;
             if (newBells != null && !newBells.isBlank()) {
                 if (meta.getLastBellSchedule() != null && !meta.getLastBellSchedule().equals(newBells)) {
@@ -178,8 +214,7 @@ public class UpdateService {
             meta.setLastDateRange(newDateRange);
             meta.setWeekStart(newWeekStart);
             meta.setLastBellSchedule(newBells);
-            meta.setLastSuccessfulUpdate(LocalDateTime.now()); // Обновляем время успешного апдейта
-            
+            meta.setLastSuccessfulUpdate(LocalDateTime.now());
             metaRepository.save(meta);
             
             if (bellsChanged) {
@@ -192,7 +227,7 @@ public class UpdateService {
                          } catch (Exception ignored) {}
                      }
                  }
-                 statusCallback.accept("🔔 Разосланы новые звонки.");
+                 statusCallback.accept("🔔 Звонки обновлены.");
             }
 
             if (!affectedGroups.isEmpty()) {

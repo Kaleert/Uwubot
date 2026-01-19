@@ -8,10 +8,10 @@ import java.time.DayOfWeek;
 @Entity
 @Data
 @Table(name = "lessons", indexes = {
-    @Index(name = "idx_group_day", columnList = "group_name, day_of_week")
+    @Index(name = "idx_group_day", columnList = "group_name, day_of_week"),
+    @Index(name = "idx_teacher", columnList = "teacher")
 })
-
-@EqualsAndHashCode(exclude = "id") 
+@EqualsAndHashCode(exclude = "id")
 public class Lesson {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,4 +28,7 @@ public class Lesson {
 
     @Column(length = 1000)
     private String rawText;
+    
+    @Column(length = 1000)
+    private String teacher;
 }

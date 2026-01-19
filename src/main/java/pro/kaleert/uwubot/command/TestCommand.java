@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
-@BotCommand(value = "/test", description = "Тесты")
+@BotCommand(value = "/test", description = "Инструменты администратора")
 @RequiredArgsConstructor
 public class TestCommand {
 
@@ -28,29 +28,33 @@ public class TestCommand {
     private final LessonRepository lessonRepository;
     private final ScheduleDiffService diffService;
 
-    @CommandHandler
+    @CommandHandler(value = "parser", description = "Проверить парсинг файла")
     @LevelRequired(min = 10)
-    public void execute(CommandContext context, 
-                        @CommandArgument("mode") String mode, 
-                        @CommandArgument("url") String url) {
-        
-        boolean isBroadcastTest;
-        if (mode.equalsIgnoreCase("broadcast")) {
-            isBroadcastTest = true;
-        } else if (mode.equalsIgnoreCase("parser")) {
-            isBroadcastTest = false;
-        } else {
-            context.reply("⚠️ Неверный режим. Используйте: <code>/test parser [url]</code> или <code>/test broadcast [url]</code>", "HTML");
-            return;
-        }
-
-        testLogic(context, url, isBroadcastTest);
+    public void testParser(CommandContext context, @CommandArgument("url") String url) {
+        runTest(context, url, false);
     }
 
-    private void testLogic(CommandContext context, String url, boolean isBroadcastTest) {
+    @CommandHandler(value = "broadcast", description = "Проверить Diff рассылки")
+    @LevelRequired(min = 10)
+    public void testBroadcast(CommandContext context, @CommandArgument("url") String url) {
+        runTest(context, url, true);
+    }
+    
+    // Алиасы для удобства: /tb -> test broadcast
+    // ВАЖНО: Так как это метод внутри класса с корнем /test, 
+    // алиас "/tb" (со слэшем) будет зарегистрирован как глобальная команда,
+    // а "bc" (без слэша) как "/test bc".
+    // Мы хотим глобальный шорткат.
+    @CommandHandler(value = "broadcast", aliases = {"/tb"}, hidden = true)
+    @LevelRequired(min = 10)
+    public void testBroadcastShortcut(CommandContext context, @CommandArgument("url") String url) {
+        runTest(context, url, true);
+    }
+
+    private void runTest(CommandContext context, String url, boolean isBroadcastTest) {
         Student student = studentRepository.findById(context.getUserId()).orElse(null);
         if (student == null || student.getSelectedGroup() == null) {
-            context.reply("Выбери группу");
+            context.reply("⚠️ Сначала выберите группу через /group");
             return;
         }
 
@@ -62,7 +66,7 @@ public class TestCommand {
                 
                 ScheduleBundle bundle = updateService.parseFileOnly(finalUrl);
                 List<Lesson> newLessons = bundle.lessons();
-                LocalDate fileDate = bundle.weekStart(); // 🔥 Берем дату из файла
+                LocalDate fileDate = bundle.weekStart();
                 
                 String myGroup = student.getSelectedGroup();
                 List<Lesson> myNew = newLessons.stream()
@@ -77,16 +81,15 @@ public class TestCommand {
                 String result;
                 if (isBroadcastTest) {
                     List<Lesson> myOld = lessonRepository.findByGroupName(myGroup);
-                    
+                    // Передаем ID админа, чтобы видеть свои алиасы
                     String diff = diffService.generateDiffReport(context.getUserId(), myGroup, myOld, myNew, fileDate);
-                    
-                    result = (diff == null) ? "✅ Изменений для вашей группы нет." : "📩 <b>Вид уведомления:</b>\n\n" + diff;
+                    result = (diff == null) ? "✅ Изменений нет." : "📩 <b>Вид уведомления:</b>\n\n" + diff;
                 } else {
                     result = RaspCommand.formatSchedule(myGroup, myNew, Collections.emptyMap(), true, fileDate);
                 }
 
                 context.reply(result, "HTML");
-                context.getClient().execute(new com.kaleert.nyagram.api.methods.updatingmessages.DeleteMessage(context.getChatId().toString(), Math.toIntExact(statusMsg.getMessageId())));
+                context.deleteMessage(Math.toIntExact(statusMsg.getMessageId()));
 
             } catch (Exception e) {
                 updateStatus(context, statusMsg, "❌ Ошибка: " + e.getMessage());

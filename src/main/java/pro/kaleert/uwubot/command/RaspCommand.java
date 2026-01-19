@@ -2,7 +2,10 @@ package pro.kaleert.uwubot.command;
 
 import com.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
 import com.kaleert.nyagram.api.objects.message.Message;
-import com.kaleert.nyagram.command.*;
+import com.kaleert.nyagram.command.BotCommand;
+import com.kaleert.nyagram.command.CommandArgument;
+import com.kaleert.nyagram.command.CommandContext;
+import com.kaleert.nyagram.command.CommandHandler;
 import com.kaleert.nyagram.util.TextUtil;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.Lesson;
@@ -21,8 +24,11 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,7 +49,7 @@ public class RaspCommand {
 
     @CommandHandler(aliases = {"рп", "расписание"})
     public void showSchedule(CommandContext context, 
-                             @CommandArgument(value = "group", required = false) String groupArg) {
+                             @CommandArgument(value = "arg", required = false) String arg) {
         
         Long userId = context.getUserId();
         
@@ -55,47 +61,47 @@ public class RaspCommand {
             return s;
         });
 
-        String targetGroup;
-        if (groupArg != null && !groupArg.isBlank()) {
+        String targetName = null;
+        List<Lesson> lessons = Collections.emptyList();
+        boolean isTeacherSearch = false;
+
+        if (arg != null && !arg.isBlank()) {
             try {
-                targetGroup = groupService.resolveGroupName(groupArg);
+                targetName = groupService.resolveGroupName(arg);
+                lessons = lessonRepository.findByGroupName(targetName);
             } catch (IllegalArgumentException e) {
-                // Если база пуста, используем "сырую" нормализацию
-                targetGroup = TextNormalizer.normalizeGroup(groupArg);
+                if (lessonRepository.count() > 0) {
+                     List<Lesson> teacherLessons = lessonRepository.findByTeacher(arg.trim());
+                     if (!teacherLessons.isEmpty()) {
+                         isTeacherSearch = true;
+                         targetName = findTeacherName(teacherLessons, arg.trim()); 
+                         lessons = teacherLessons;
+                     }
+                }
+                
+                if (lessons.isEmpty()) {
+                     if (lessonRepository.count() == 0) {
+                         targetName = TextNormalizer.normalizeGroup(arg);
+                     } else {
+                         context.reply("⚠️ Не найдена группа или преподаватель: <b>" + TextUtil.escapeHtml(arg) + "</b>", "HTML");
+                         return;
+                     }
+                }
             }
         } else {
             if (student.getSelectedGroup() == null) {
-                context.reply("⚠️ Группа не выбрана. Используй <code>/group [номер]</code>", "HTML");
+                context.reply("⚠️ Группа не выбрана...", "HTML");
                 return;
             }
-            targetGroup = student.getSelectedGroup();
+            targetName = student.getSelectedGroup();
+            lessons = lessonRepository.findByGroupName(targetName);
         }
 
-        List<Lesson> lessons = lessonRepository.findByGroupName(targetGroup);
-        
-        // Если уроков нет -> пробуем найти группу через Smart Search (вдруг опечатка в БД или профиле)
-        if (lessons.isEmpty() && lessonRepository.count() > 0) {
-            try {
-                String smartGroup = groupService.resolveGroupName(targetGroup);
-                if (!smartGroup.equals(targetGroup)) {
-                    targetGroup = smartGroup;
-                    lessons = lessonRepository.findByGroupName(targetGroup);
-                    // Если это была своя группа, можно тихо обновить профиль
-                    if (groupArg == null) {
-                        student.setSelectedGroup(targetGroup);
-                        studentRepository.save(student);
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        
-        // Если ВСЁ ЕЩЕ пусто -> запускаем обновление (НО С ФЛАГОМ FALSE)
-        if (lessons.isEmpty()) {
-            final String groupToFind = targetGroup;
-            Message statusMsg = context.reply("⏳ Нет данных для <b>" + groupToFind + "</b>. Проверяю обновление...", "HTML").join();
+        if (lessons.isEmpty() && !isTeacherSearch) {
+            final String groupToFind = targetName;
+            Message statusMsg = context.reply("⏳ В базе нет данных для <b>" + groupToFind + "</b>. Проверяю сайт...", "HTML").join();
             
             CompletableFuture.runAsync(() -> {
-                // 🔥 ВАЖНО: false означает "не скачивать, если хэш тот же"
                 updateService.forceUpdate(status -> {
                     try {
                         context.getClient().execute(EditMessageText.builder()
@@ -104,16 +110,16 @@ public class RaspCommand {
                                 .text(status)
                                 .build());
                     } catch (Exception ignored) {}
-                }, false); 
+                });
             }).thenRun(() -> {
                 try {
-                    // Еще раз пробуем найти после обновления
                     String refreshedGroup = groupService.resolveGroupName(groupToFind);
                     List<Lesson> newLessons = lessonRepository.findByGroupName(refreshedGroup);
+                    
                     if (newLessons.isEmpty()) {
                         context.reply("❌ Расписание не найдено даже в новом файле.", "HTML");
                     } else {
-                        sendScheduleResult(context, student, refreshedGroup, newLessons);
+                        sendScheduleResult(context, student, refreshedGroup, newLessons, false);
                     }
                 } catch (Exception e) {
                      context.reply("❌ Группа не найдена.");
@@ -122,30 +128,37 @@ public class RaspCommand {
             return;
         }
 
-        sendScheduleResult(context, student, targetGroup, lessons);
+        sendScheduleResult(context, student, targetName, lessons, isTeacherSearch);
     }
 
-    private void sendScheduleResult(CommandContext context, Student student, String groupName, List<Lesson> lessons) {
-        Map<String, String> userAliases = aliasRepository.findAllByUserId(context.getUserId()).stream()
-                .collect(Collectors.toMap(a -> a.getOriginalName().toLowerCase(), SubjectAlias::getAliasName));
-
+    private void sendScheduleResult(CommandContext context, Student student, String headerName, List<Lesson> lessons, boolean isTeacher) {
         ParsingMeta meta = metaRepository.findById("schedule_file").orElse(null);
         LocalDate weekStart = (meta != null && meta.getWeekStart() != null) 
                 ? meta.getWeekStart() 
                 : LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
-        String result = formatSchedule(groupName, lessons, userAliases, student.isShowCodes(), weekStart);
+        String result;
+        if (isTeacher) {
+             result = formatTeacherSchedule(headerName, lessons, weekStart);
+        } else {
+             Map<String, String> userAliases = aliasRepository.findAllByUserId(context.getUserId()).stream()
+                .collect(Collectors.toMap(a -> a.getOriginalName().toLowerCase(), SubjectAlias::getAliasName));
+             
+             result = formatSchedule(headerName, lessons, userAliases, student.isShowCodes(), weekStart);
+        }
+        
         context.reply(result, "HTML");
     }
 
     public static String formatSchedule(String group, List<Lesson> lessons, Map<String, String> aliases, boolean showCodes, LocalDate weekStart) {
         StringBuilder sb = new StringBuilder("Расписание для <b>" + group + "</b>\n\n");
-        Map<DayOfWeek, List<Lesson>> byDay = lessons.stream().collect(Collectors.groupingBy(Lesson::getDayOfWeek));
+        
+        Map<DayOfWeek, List<Lesson>> byDay = lessons.stream()
+                .collect(Collectors.groupingBy(Lesson::getDayOfWeek));
         List<DayOfWeek> sortedDays = byDay.keySet().stream().sorted().toList();
 
         for (DayOfWeek day : sortedDays) {
             sb.append("<b>").append(getDateForDay(day, weekStart)).append("  ").append(getDayNameRu(day)).append("</b>\n");
-
             List<Lesson> dayLessons = byDay.get(day);
             int maxLesson = dayLessons.stream().mapToInt(Lesson::getLessonNumber).max().orElse(5);
             int limit = Math.max(5, maxLesson);
@@ -166,6 +179,43 @@ public class RaspCommand {
         return sb.toString();
     }
 
+    private static String formatTeacherSchedule(String teacherName, List<Lesson> lessons, LocalDate weekStart) {
+        StringBuilder sb = new StringBuilder("👨‍🏫 Расписание: <b>" + TextUtil.escapeHtml(teacherName) + "</b>\n\n");
+        
+        Map<DayOfWeek, List<Lesson>> byDay = lessons.stream()
+                .collect(Collectors.groupingBy(Lesson::getDayOfWeek));
+        
+        List<DayOfWeek> sortedDays = byDay.keySet().stream().sorted().toList();
+
+        for (DayOfWeek day : sortedDays) {
+            sb.append("<b>").append(getDateForDay(day, weekStart)).append("  ").append(getDayNameRu(day)).append("</b>\n");
+            
+            Map<Integer, List<Lesson>> byLessonNum = byDay.get(day).stream()
+                    .collect(Collectors.groupingBy(Lesson::getLessonNumber, TreeMap::new, Collectors.toList()));
+
+            for (Map.Entry<Integer, List<Lesson>> entry : byLessonNum.entrySet()) {
+                int num = entry.getKey();
+                List<Lesson> groupLessons = entry.getValue();
+                
+                sb.append(num).append(" | ");
+                
+                List<String> lines = new ArrayList<>();
+                for (Lesson l : groupLessons) {
+                    lines.add(String.format("<b>%s</b>: %s", l.getGroupName(), l.getRawText()));
+                }
+                
+                if (lines.size() > 1) {
+                    sb.append("\n    ").append(String.join("\n    ", lines));
+                } else {
+                    sb.append(lines.get(0));
+                }
+                sb.append("\n");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
     private static String getDateForDay(DayOfWeek targetDay, LocalDate weekStart) {
         if (weekStart == null) weekStart = LocalDate.now();
         LocalDate targetDate = weekStart.plusDays(targetDay.getValue() - 1);
@@ -174,7 +224,6 @@ public class RaspCommand {
 
     public static String formatLessonLine(String raw, Map<String, String> aliases, boolean showCodes) {
         if (raw.equals("—")) return raw;
-
         if (raw.contains(" / ")) {
             String[] parts = raw.split(" / ");
             LessonInfo info1 = parseLessonInfo(parts[0], aliases, showCodes);
@@ -255,5 +304,14 @@ public class RaspCommand {
             case SATURDAY -> "СУББОТА";
             case SUNDAY -> "ВОСКРЕСЕНЬЕ";
         };
+    }
+    
+    private String findTeacherName(List<Lesson> lessons, String query) {
+        for (Lesson l : lessons) {
+            if (l.getTeacher().toLowerCase().contains(query.toLowerCase())) {
+                return l.getTeacher();
+            }
+        }
+        return query;
     }
 }

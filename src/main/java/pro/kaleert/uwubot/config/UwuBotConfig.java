@@ -33,4 +33,5 @@ public class UwuBotConfig implements NyagramBotConfig {
     
     private List<String> allowedUpdates;
     private String apiUrl = "https://api.telegram.org";
+    private String scheduleUrl = "https://edu.tatar.ru/";
 }
