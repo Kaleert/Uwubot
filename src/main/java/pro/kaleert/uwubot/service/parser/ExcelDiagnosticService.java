@@ -2,10 +2,13 @@ package pro.kaleert.uwubot.service.parser;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -16,81 +19,163 @@ import java.util.List;
 @Service
 public class ExcelDiagnosticService {
 
-    public void dumpStructure(InputStream inputStream, String outputFileName) {
-        log.info("🔍 STARTING EXCEL DUMP -> {}", outputFileName);
-        
+    public File createDump(InputStream inputStream) {
+        File tempFile;
+        try {
+            tempFile = File.createTempFile("excel_debug_", ".txt");
+        } catch (Exception e) {
+            throw new RuntimeException("Could not create temp file", e);
+        }
+
         try (Workbook workbook = WorkbookFactory.create(inputStream);
-             BufferedWriter writer = new BufferedWriter(new FileWriter(outputFileName, StandardCharsets.UTF_8))) {
+             BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile, StandardCharsets.UTF_8))) {
 
             Sheet sheet = workbook.getSheetAt(0);
-            
-            writer.write("=== EXCEL STRUCTURE DUMP ===\n");
-            writer.write("Total Rows: " + sheet.getLastRowNum() + "\n\n");
 
-            for (int r = 0; r <= Math.min(sheet.getLastRowNum(), 100); r++) {
+            writer.write("=== EXCEL DEEP DUMP ===\n");
+            writer.write("Sheet: " + sheet.getSheetName() + "\n");
+            writer.write("Last Row Index: " + sheet.getLastRowNum() + "\n");
+            writer.write("Merged Regions: " + sheet.getNumMergedRegions() + "\n");
+            writer.write("=======================\n\n");
+
+            // Сканируем с запасом, чтобы найти скрытые данные
+            int maxRow = sheet.getLastRowNum() + 5;
+
+            for (int r = 0; r <= maxRow; r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) {
-                    writer.write(String.format("[ROW %d] IS NULL\n", r));
-                    continue;
+                    continue; // Пропускаем полностью пустые строки
                 }
 
-                writer.write(String.format("--- [ROW %d] ---\n", r));
+                // Строим буфер строки, чтобы записать её только если в ней есть данные
+                StringBuilder rowBuffer = new StringBuilder();
+                boolean hasData = false;
 
-                for (int c = 0; c < 150; c++) {
+                rowBuffer.append(String.format("--- [ROW %d] Height:%s ---\n", r, row.getHeight()));
+
+                // Сканируем первые 60 колонок (обычно расписание не шире)
+                int lastCell = Math.max(row.getLastCellNum(), 60);
+
+                for (int c = 0; c < lastCell; c++) {
                     Cell cell = row.getCell(c);
-                    if (cell == null) continue;
-
-                    String value = getCellText(cell);
-                    if (value.isBlank()) continue;
-
-                    String mergeInfo = getMergeInfo(sheet, r, c);
+                    CellAddress addr = new CellAddress(r, c);
                     
-                    String colorInfo = getColorInfo(cell);
+                    String value = getCellText(cell);
+                    String mergeInfo = getMergeInfo(sheet, r, c);
+                    String styleInfo = getStyleInfo(cell);
 
-                    writer.write(String.format("   COL %d: '%s' %s %s\n", 
-                            c, 
-                            value.replace("\n", "\\n"), 
-                            mergeInfo,
-                            colorInfo
-                    ));
+                    // Если ячейка не пустая, или объединена, или имеет стиль (фон/границы)
+                    if (!value.isBlank() || !mergeInfo.isEmpty() || !styleInfo.isEmpty()) {
+                        hasData = true;
+                        
+                        String safeValue = value.replace("\n", "\\n").replace("\r", "");
+                        
+                        // Формат: [C5] 'Значение' | MERGED: 2x1 | STYLE: {BOLD, RED}
+                        rowBuffer.append(String.format("   [%-4s] (c:%d) '%s'", 
+                                addr.formatAsString(), c, safeValue));
+
+                        if (!mergeInfo.isEmpty()) {
+                            rowBuffer.append(" | ").append(mergeInfo);
+                        }
+                        if (!styleInfo.isEmpty()) {
+                            rowBuffer.append(" | ").append(styleInfo);
+                        }
+                        rowBuffer.append("\n");
+                    }
+                }
+
+                if (hasData) {
+                    writer.write(rowBuffer.toString());
+                    writer.write("\n");
                 }
             }
-            
-            log.info("✅ DUMP SAVED SUCCESSFULLY TO {}", outputFileName);
+
+            writer.write("\n=== END OF DUMP ===");
+            return tempFile;
 
         } catch (Exception e) {
-            log.error("Failed to dump excel", e);
+            log.error("Analysis failed", e);
+            throw new RuntimeException("Analysis failed: " + e.getMessage());
         }
     }
 
     private String getMergeInfo(Sheet sheet, int row, int col) {
-        for (CellRangeAddress region : sheet.getMergedRegions()) {
+        for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
+            CellRangeAddress region = sheet.getMergedRegion(i);
             if (region.isInRange(row, col)) {
                 if (region.getFirstRow() == row && region.getFirstColumn() == col) {
-                    return String.format("[MERGED: %d rows x %d cols -> ends at R%d:C%d]", 
-                            region.getLastRow() - region.getFirstRow() + 1,
-                            region.getLastColumn() - region.getFirstColumn() + 1,
-                            region.getLastRow(),
-                            region.getLastColumn());
+                    // Это начало объединенной ячейки
+                    int rows = region.getLastRow() - region.getFirstRow() + 1;
+                    int cols = region.getLastColumn() - region.getFirstColumn() + 1;
+                    return String.format("MERGE_START[%dx%d]->%s", rows, cols, 
+                            new CellAddress(region.getLastRow(), region.getLastColumn()).formatAsString());
                 } else {
-                    return "[PART OF MERGE]";
+                    // Это часть объединенной ячейки (обычно пустая)
+                    return String.format("MERGED_IN(%s)", 
+                            new CellAddress(region.getFirstRow(), region.getFirstColumn()).formatAsString());
                 }
             }
         }
         return "";
     }
 
+    private String getStyleInfo(Cell cell) {
+        if (cell == null) return "";
+        CellStyle style = cell.getCellStyle();
+        if (style == null) return "";
+
+        List<String> props = new ArrayList<>();
+        Workbook wb = cell.getSheet().getWorkbook();
+        
+        // Font
+        org.apache.poi.ss.usermodel.Font font = wb.getFontAt(style.getFontIndex());
+        if (font.getBold()) props.add("BOLD");
+        if (font.getItalic()) props.add("ITALIC");
+        if (font.getColor() != org.apache.poi.ss.usermodel.Font.COLOR_NORMAL) props.add("COLORED_TEXT");
+
+        // Fill / Background
+        if (style.getFillPattern() != FillPatternType.NO_FILL) {
+            Color color = style.getFillForegroundColorColor();
+            if (color instanceof XSSFColor xssfColor) {
+                String hex = xssfColor.getARGBHex();
+                if (hex != null) props.add("BG:" + hex);
+                else props.add("BG_COLOR");
+            } else {
+                props.add("BG_INDEX:" + style.getFillForegroundColor());
+            }
+        }
+
+        // Borders
+        if (style.getBorderBottom() != BorderStyle.NONE) props.add("B_BOTT");
+        if (style.getBorderTop() != BorderStyle.NONE) props.add("B_TOP");
+        if (style.getBorderLeft() != BorderStyle.NONE) props.add("B_LEFT");
+        if (style.getBorderRight() != BorderStyle.NONE) props.add("B_RIGHT");
+
+        // Alignment
+        if (style.getAlignment() == HorizontalAlignment.CENTER) props.add("CENTER");
+        if (style.getRotation() != 0) props.add("ROT:" + style.getRotation());
+
+        if (props.isEmpty()) return "";
+        return "{" + String.join(",", props) + "}";
+    }
+
     private String getCellText(Cell cell) {
+        if (cell == null) return "";
         try {
             return switch (cell.getCellType()) {
                 case STRING -> cell.getStringCellValue().trim();
-                case NUMERIC -> String.valueOf(cell.getNumericCellValue());
+                case NUMERIC -> {
+                    if (DateUtil.isCellDateFormatted(cell)) {
+                        yield cell.getLocalDateTimeCellValue().toString();
+                    }
+                    yield String.valueOf(cell.getNumericCellValue());
+                }
                 case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
                 case FORMULA -> {
                     try {
-                        yield cell.getStringCellValue();
+                        yield "FORMULA=" + cell.getCellFormula() + " -> " + cell.getStringCellValue();
                     } catch (Exception e) {
-                        yield String.valueOf(cell.getNumericCellValue());
+                        yield "FORMULA=" + cell.getCellFormula() + " -> " + cell.getNumericCellValue();
                     }
                 }
                 default -> "";
@@ -98,15 +183,5 @@ public class ExcelDiagnosticService {
         } catch (Exception e) {
             return "[ERR]";
         }
-    }
-    
-    private String getColorInfo(Cell cell) {
-        CellStyle style = cell.getCellStyle();
-        if (style == null) return "";
-        
-        if (style.getFillPattern() != FillPatternType.NO_FILL) {
-            return "[HAS_BG_COLOR]"; 
-        }
-        return "";
     }
 }

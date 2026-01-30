@@ -23,10 +23,12 @@ import pro.kaleert.uwubot.service.parser.ScheduleParserService;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -65,9 +67,7 @@ public class UpdateService {
         for (int i = 0; i < MAX_RETRIES; i++) {
             try {
                 Document doc = Jsoup.connect(properties.getScheduleUrl()).timeout(10000).get();
-                
                 org.jsoup.select.Elements links = doc.select("a[href$=.xlsx]");
-                
                 Element bestLink = findBestLink(links);
                 
                 if (bestLink != null) {
@@ -76,8 +76,7 @@ public class UpdateService {
                     log.debug("Выбрана ссылка: {} (Текст: {})", fileUrl, bestLink.text());
                     break;
                 }
-                
-                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+                Thread.sleep(2000);
             } catch (Exception e) {
                 if (i == MAX_RETRIES - 1) statusCallback.accept("❌ Ошибка сайта: " + e.getMessage());
             }
@@ -101,12 +100,10 @@ public class UpdateService {
     private Element findBestLink(org.jsoup.select.Elements links) {
         Element bestLink = null;
         LocalDate maxDate = LocalDate.MIN;
-
         Pattern datePattern = Pattern.compile("(\\d{2})[._](\\d{2})[._](\\d{4})");
 
         for (Element link : links) {
             String raw = link.text() + " " + link.attr("href");
-            
             if (!raw.toLowerCase().contains("расписание")) continue;
 
             Matcher m = datePattern.matcher(raw);
@@ -115,7 +112,6 @@ public class UpdateService {
                     int day = Integer.parseInt(m.group(1));
                     int month = Integer.parseInt(m.group(2));
                     int year = Integer.parseInt(m.group(3));
-                    
                     LocalDate date = LocalDate.of(year, month, day);
                     
                     if (date.isAfter(maxDate)) {
@@ -125,13 +121,13 @@ public class UpdateService {
                 } catch (Exception ignored) {}
             }
         }
-
         return bestLink != null ? bestLink : links.last();
     }
 
     public ScheduleBundle parseFileOnly(String url) throws Exception {
-        java.net.URL rawUrl = new java.net.URL(url);
-        String encodedUrl = new java.net.URI(rawUrl.getProtocol(), rawUrl.getUserInfo(), rawUrl.getHost(), rawUrl.getPort(), rawUrl.getPath(), rawUrl.getQuery(), null).toASCIIString();
+        String encodedUrl = fixUrl(url);
+        log.info("Parsing file from: {}", encodedUrl);
+        
         try (InputStream in = new URL(encodedUrl).openStream()) {
             return parserService.parse(in);
         }
@@ -142,8 +138,7 @@ public class UpdateService {
         statusCallback.accept("📥 Скачивание...");
         meta.setLastCheckTime(LocalDateTime.now());
         
-        java.net.URL rawUrl = new java.net.URL(url);
-        String encodedUrl = new java.net.URI(rawUrl.getProtocol(), rawUrl.getUserInfo(), rawUrl.getHost(), rawUrl.getPort(), rawUrl.getPath(), rawUrl.getQuery(), null).toASCIIString();
+        String encodedUrl = fixUrl(url);
 
         byte[] fileBytes;
         try (InputStream in = new URL(encodedUrl).openStream()) {
@@ -169,13 +164,12 @@ public class UpdateService {
             String newBells = newBundle.bellSchedule();
 
             if (newLessons.isEmpty()) {
-                statusCallback.accept("⚠️ Файл пуст.");
+                statusCallback.accept("⚠️ Файл пуст или парсинг не удался.");
                 return;
             }
 
             boolean isNewWeek = meta.getWeekStart() != null && !meta.getWeekStart().isEqual(newWeekStart);
 
-            // Проверка звонков
             boolean bellsChanged = false;
             if (newBells != null && !newBells.isBlank()) {
                 if (meta.getLastBellSchedule() != null && !meta.getLastBellSchedule().equals(newBells)) {
@@ -205,7 +199,7 @@ public class UpdateService {
                 }
             }
 
-            statusCallback.accept("💾 Сохранение...");
+            statusCallback.accept("💾 Сохранение в БД...");
             lessonRepository.deleteAll();
             lessonRepository.saveAll(newLessons);
             
@@ -248,8 +242,23 @@ public class UpdateService {
                 sendNotifications(notifications);
             }
             
-            statusCallback.accept("✅ Готово!");
+            statusCallback.accept("✅ Готово! Уроков: " + newLessons.size());
         }
+    }
+
+    private String fixUrl(String url) throws Exception {
+        URL rawUrl = new URL(url);
+        // Сначала декодируем (убираем %20), чтобы URI мог закодировать чисто
+        String decodedPath = URLDecoder.decode(rawUrl.getPath(), StandardCharsets.UTF_8);
+        return new URI(
+                rawUrl.getProtocol(), 
+                rawUrl.getUserInfo(), 
+                rawUrl.getHost(), 
+                rawUrl.getPort(), 
+                decodedPath, 
+                rawUrl.getQuery(), 
+                null
+        ).toASCIIString();
     }
 
     private boolean isScheduleEqual(List<Lesson> list1, List<Lesson> list2) {
