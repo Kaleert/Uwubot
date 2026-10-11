@@ -58,7 +58,7 @@ public class ScheduleParserService {
                 }
             }
 
-            int startRow = headerRowIndex + 2; 
+            int startRow = headerRowIndex + 2;
             for (int r = startRow; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
@@ -102,8 +102,7 @@ public class ScheduleParserService {
                     if (isMerged || isIdentical || isWideSplit) {
                         finalLesson = formatItem(s1.isEmpty() ? s2 : s1, r1.isEmpty() ? r2 : r1);
                         finalTeacher = s1.isEmpty() ? t2 : t1;
-                    } 
-                    else {
+                    } else {
                         String part1 = formatItem(s1, r1);
                         String part2;
 
@@ -119,8 +118,9 @@ public class ScheduleParserService {
                         
                         finalLesson = part1 + " / " + part2;
                         
-                        if (t1.equals(t2) && !t1.isEmpty()) finalTeacher = t1;
-                        else {
+                        if (t1.equals(t2) && !t1.isEmpty()) {
+                            finalTeacher = t1;
+                        } else {
                              String teach1 = t1.isEmpty() ? "—" : t1;
                              String teach2 = t2.isEmpty() ? "—" : t2;
                              finalTeacher = teach1 + " / " + teach2;

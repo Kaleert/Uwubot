@@ -92,7 +92,7 @@ spring:
 logging:
   level:
     pro.kaleert.uwubot: INFO
-    com.kaleert.nyagram: INFO
+    pro.kaleert.nyagram: INFO
 ```
 
 ## 🎮 Команды

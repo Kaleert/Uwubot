@@ -1,11 +1,13 @@
 package pro.kaleert.uwubot.service.parser;
 
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -18,9 +20,9 @@ public class ExcelStructureAnalyzer {
     public FileStructure analyze(Workbook workbook) {
         Sheet sheet = workbook.getSheetAt(0);
         FileStructure structure = new FileStructure();
-        
+
         for (Row row : sheet) {
-            if (row.getRowNum() > 20) break; 
+            if (row.getRowNum() > 20) break;
 
             for (Cell cell : row) {
                 String text = getCellText(cell).trim();
@@ -28,17 +30,16 @@ public class ExcelStructureAnalyzer {
                 if (GROUP_NAME_PATTERN.matcher(text).matches()) {
                     int colIndex = cell.getColumnIndex();
                     int colspan = getColSpan(sheet, row.getRowNum(), colIndex);
-                    
                     structure.addGroup(text, colIndex, colspan);
                     structure.setHeaderRowIndex(row.getRowNum());
                 }
             }
-            
             if (structure.getGroups().size() > 2) break;
         }
 
         if (structure.getHeaderRowIndex() != -1) {
             int startRow = structure.getHeaderRowIndex() + 1;
+
             for (int r = startRow; r < Math.min(startRow + 100, sheet.getLastRowNum()); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
@@ -62,14 +63,13 @@ public class ExcelStructureAnalyzer {
 
         if (structure.getDayColumnIndex() == -1 && structure.getTimeColumnIndex() != -1) {
             int assumedDayCol = 0;
-            
             log.warn("Day column not found by regex. Assuming column {} based on Time column location.", assumedDayCol);
             structure.setDayColumnIndex(assumedDayCol);
         }
-        
+
         if (structure.getDayColumnIndex() == -1 && !structure.getGroups().isEmpty()) {
-             structure.setDayColumnIndex(0);
-             log.warn("Columns not identified perfectly. Forcing DayColumn = 0");
+            structure.setDayColumnIndex(0);
+            log.warn("Columns not identified perfectly. Forcing DayColumn = 0");
         }
 
         log.info("Analysis Complete: {}", structure);
@@ -80,7 +80,7 @@ public class ExcelStructureAnalyzer {
         if (cell == null) return "";
         try {
             return switch (cell.getCellType()) {
-                case STRING -> cell.getStringCellValue();
+                case STRING -> cell.getStringCellValue().trim();
                 case NUMERIC -> {
                     if (DateUtil.isCellDateFormatted(cell)) {
                         yield cell.getLocalDateTimeCellValue().toString();
@@ -90,7 +90,7 @@ public class ExcelStructureAnalyzer {
                 case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
                 case FORMULA -> {
                     try {
-                        yield cell.getStringCellValue();
+                        yield cell.getStringCellValue().trim();
                     } catch (Exception e) {
                         yield String.valueOf(cell.getNumericCellValue());
                     }
@@ -111,7 +111,7 @@ public class ExcelStructureAnalyzer {
         return 1;
     }
 
-    @lombok.Data
+    @Data
     public static class FileStructure {
         private int headerRowIndex = -1;
         private int dayColumnIndex = -1;
@@ -119,11 +119,11 @@ public class ExcelStructureAnalyzer {
         private Map<String, GroupColumnRange> groups = new HashMap<>();
 
         public void addGroup(String name, int startCol, int width) {
-            groups.put(name, new GroupColumnRange(startCol, width));
+            this.groups.put(name, new GroupColumnRange(startCol, width));
         }
 
         public boolean isComplete() {
-            return dayColumnIndex != -1 && !groups.isEmpty();
+            return this.dayColumnIndex != -1 && !this.groups.isEmpty();
         }
     }
 

@@ -1,10 +1,10 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.api.objects.replykeyboard.InlineKeyboardMarkup;
-import com.kaleert.nyagram.command.BotCommand;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.command.CommandHandler;
-import com.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder;
+import pro.kaleert.nyagram.api.objects.replykeyboard.InlineKeyboardMarkup;
+import pro.kaleert.nyagram.command.BotCommand;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.command.CommandHandler;
+import pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.Student;
 import pro.kaleert.uwubot.repository.StudentRepository;
@@ -49,5 +49,11 @@ public class SettingsCommand {
                 .build();
 
         context.reply(text, "HTML", null, markup);
+    }
+
+    @pro.kaleert.nyagram.callback.annotation.Callback("cmd:settings")
+    public void onSettingsCallback(CommandContext context) {
+        context.answerCallback("Открываю настройки...", false);
+        execute(context);
     }
 }

@@ -1,12 +1,12 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
-import com.kaleert.nyagram.api.objects.message.Message;
-import com.kaleert.nyagram.api.objects.InputFile;
-import com.kaleert.nyagram.command.*;
-import com.kaleert.nyagram.api.methods.send.SendDocument;
-import com.kaleert.nyagram.security.LevelRequired;
-import com.kaleert.nyagram.core.AsyncMode;
+import pro.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
+import pro.kaleert.nyagram.api.objects.message.Message;
+import pro.kaleert.nyagram.api.objects.InputFile;
+import pro.kaleert.nyagram.command.*;
+import pro.kaleert.nyagram.api.methods.send.SendDocument;
+import pro.kaleert.nyagram.security.LevelRequired;
+import pro.kaleert.nyagram.core.AsyncMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import pro.kaleert.uwubot.entity.Lesson;

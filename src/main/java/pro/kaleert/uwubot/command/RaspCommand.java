@@ -1,12 +1,12 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
-import com.kaleert.nyagram.api.objects.message.Message;
-import com.kaleert.nyagram.command.BotCommand;
-import com.kaleert.nyagram.command.CommandArgument;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.command.CommandHandler;
-import com.kaleert.nyagram.util.TextUtil;
+import pro.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
+import pro.kaleert.nyagram.api.objects.message.Message;
+import pro.kaleert.nyagram.command.BotCommand;
+import pro.kaleert.nyagram.command.CommandArgument;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.command.CommandHandler;
+import pro.kaleert.nyagram.util.TextUtil;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.Lesson;
 import pro.kaleert.uwubot.entity.ParsingMeta;
@@ -313,5 +313,38 @@ public class RaspCommand {
             }
         }
         return query;
+    }
+
+    @pro.kaleert.nyagram.callback.annotation.Callback("cmd:rasp")
+    public void onRaspCallback(CommandContext context) {
+        Student student = studentRepository.findById(context.getUserId()).orElse(null);
+        
+        if (student == null || student.getSelectedGroup() == null) {
+            var kb = pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder.create()
+                    .button("✍️ Установить группу", "cmd:set_group", "success").row()
+                    .button("🔙 Назад", "cmd:back_to_start").build();
+            context.editMessage("⚠️ Сначала установите группу!", kb);
+            return;
+        }
+
+        List<Lesson> lessons = lessonRepository.findByGroupName(student.getSelectedGroup());
+        
+        if (lessons.isEmpty()) {
+            context.editMessage("⏳ В базе пока нет данных для вашей группы. Попробуйте позже.", pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder.create().button("🔙 Назад", "cmd:back_to_start").build());
+            return;
+        }
+        
+        ParsingMeta meta = metaRepository.findById("schedule_file").orElse(null);
+        LocalDate weekStart = (meta != null && meta.getWeekStart() != null) 
+                ? meta.getWeekStart() 
+                : LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        
+        Map<String, String> userAliases = aliasRepository.findAllByUserId(context.getUserId()).stream()
+                .collect(Collectors.toMap(a -> a.getOriginalName().toLowerCase(), SubjectAlias::getAliasName));
+                
+        String result = formatSchedule(student.getSelectedGroup(), lessons, userAliases, student.isShowCodes(), weekStart);
+        
+        var kb = pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder.create().button("🔙 Назад", "cmd:back_to_start").build();
+        context.editMessage(result, kb);
     }
 }

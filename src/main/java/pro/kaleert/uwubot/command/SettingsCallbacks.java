@@ -1,10 +1,10 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
-import com.kaleert.nyagram.callback.annotation.Callback;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.api.objects.replykeyboard.InlineKeyboardMarkup;
-import com.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder;
+import pro.kaleert.nyagram.api.methods.updatingmessages.EditMessageText;
+import pro.kaleert.nyagram.callback.annotation.Callback;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.api.objects.replykeyboard.InlineKeyboardMarkup;
+import pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import pro.kaleert.uwubot.entity.Student;
@@ -73,7 +73,7 @@ public class SettingsCallbacks {
     }
 
     @Callback("alias:delete:{id}")
-    public void deleteAlias(CommandContext context, @com.kaleert.nyagram.callback.annotation.CallbackVar("id") Long aliasId) {
+    public void deleteAlias(CommandContext context, @pro.kaleert.nyagram.callback.annotation.CallbackVar("id") Long aliasId) {
         if (aliasRepository.existsById(aliasId)) {
             aliasRepository.deleteById(aliasId);
         }
@@ -83,6 +83,13 @@ public class SettingsCallbacks {
     @Callback("settings:back")
     public void backToMain(CommandContext context) {
         Student student = studentRepository.findById(context.getUserId()).orElse(null);
+        updateSettingsMenu(context, student);
+    }
+
+    @Callback("cmd:settings")
+    public void openSettingsFromMenu(CommandContext context) {
+        Student student = studentRepository.findById(context.getUserId()).orElse(null);
+        if (student == null) return;
         updateSettingsMenu(context, student);
     }
 
@@ -104,15 +111,15 @@ public class SettingsCallbacks {
                 .button("🔔 Уведомления", "settings:toggle_notif")
                 .row()
                 .button("🔢 Коды предметов", "settings:toggle_codes")
-                .button("🔄 Сменить группу", "settings:change_group")
+                .button("🔄 Сменить группу", "cmd:set_group")
                 .row()
-                .button("❌ Закрыть", "delete_msg")
+                .button("🔙 В главное меню", "cmd:back_to_start")
                 .build();
 
         editMessage(context, text, markup);
     }
 
-    private void editMessage(CommandContext context, String text, com.kaleert.nyagram.api.objects.replykeyboard.ReplyKeyboard markup) {
+    private void editMessage(CommandContext context, String text, pro.kaleert.nyagram.api.objects.replykeyboard.ReplyKeyboard markup) {
         try {
             context.getClient().execute(EditMessageText.builder()
                     .chatId(context.getChatId().toString())

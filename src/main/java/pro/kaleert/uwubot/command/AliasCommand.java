@@ -1,6 +1,6 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.command.*;
+import pro.kaleert.nyagram.command.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.SubjectAlias;

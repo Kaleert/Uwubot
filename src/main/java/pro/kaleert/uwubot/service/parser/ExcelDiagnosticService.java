@@ -38,22 +38,16 @@ public class ExcelDiagnosticService {
             writer.write("Merged Regions: " + sheet.getNumMergedRegions() + "\n");
             writer.write("=======================\n\n");
 
-            // Сканируем с запасом, чтобы найти скрытые данные
             int maxRow = sheet.getLastRowNum() + 5;
 
             for (int r = 0; r <= maxRow; r++) {
                 Row row = sheet.getRow(r);
-                if (row == null) {
-                    continue; // Пропускаем полностью пустые строки
-                }
+                if (row == null) continue;
 
-                // Строим буфер строки, чтобы записать её только если в ней есть данные
                 StringBuilder rowBuffer = new StringBuilder();
                 boolean hasData = false;
 
                 rowBuffer.append(String.format("--- [ROW %d] Height:%s ---\n", r, row.getHeight()));
-
-                // Сканируем первые 60 колонок (обычно расписание не шире)
                 int lastCell = Math.max(row.getLastCellNum(), 60);
 
                 for (int c = 0; c < lastCell; c++) {
@@ -64,15 +58,11 @@ public class ExcelDiagnosticService {
                     String mergeInfo = getMergeInfo(sheet, r, c);
                     String styleInfo = getStyleInfo(cell);
 
-                    // Если ячейка не пустая, или объединена, или имеет стиль (фон/границы)
                     if (!value.isBlank() || !mergeInfo.isEmpty() || !styleInfo.isEmpty()) {
                         hasData = true;
-                        
                         String safeValue = value.replace("\n", "\\n").replace("\r", "");
                         
-                        // Формат: [C5] 'Значение' | MERGED: 2x1 | STYLE: {BOLD, RED}
-                        rowBuffer.append(String.format("   [%-4s] (c:%d) '%s'", 
-                                addr.formatAsString(), c, safeValue));
+                        rowBuffer.append(String.format("   [%-4s] (c:%d) '%s'", addr.formatAsString(), c, safeValue));
 
                         if (!mergeInfo.isEmpty()) {
                             rowBuffer.append(" | ").append(mergeInfo);
@@ -104,13 +94,11 @@ public class ExcelDiagnosticService {
             CellRangeAddress region = sheet.getMergedRegion(i);
             if (region.isInRange(row, col)) {
                 if (region.getFirstRow() == row && region.getFirstColumn() == col) {
-                    // Это начало объединенной ячейки
                     int rows = region.getLastRow() - region.getFirstRow() + 1;
                     int cols = region.getLastColumn() - region.getFirstColumn() + 1;
                     return String.format("MERGE_START[%dx%d]->%s", rows, cols, 
                             new CellAddress(region.getLastRow(), region.getLastColumn()).formatAsString());
                 } else {
-                    // Это часть объединенной ячейки (обычно пустая)
                     return String.format("MERGED_IN(%s)", 
                             new CellAddress(region.getFirstRow(), region.getFirstColumn()).formatAsString());
                 }
@@ -127,13 +115,11 @@ public class ExcelDiagnosticService {
         List<String> props = new ArrayList<>();
         Workbook wb = cell.getSheet().getWorkbook();
         
-        // Font
-        org.apache.poi.ss.usermodel.Font font = wb.getFontAt(style.getFontIndex());
+        Font font = wb.getFontAt(style.getFontIndex());
         if (font.getBold()) props.add("BOLD");
         if (font.getItalic()) props.add("ITALIC");
-        if (font.getColor() != org.apache.poi.ss.usermodel.Font.COLOR_NORMAL) props.add("COLORED_TEXT");
+        if (font.getColor() != Font.COLOR_NORMAL) props.add("COLORED_TEXT");
 
-        // Fill / Background
         if (style.getFillPattern() != FillPatternType.NO_FILL) {
             Color color = style.getFillForegroundColorColor();
             if (color instanceof XSSFColor xssfColor) {
@@ -145,13 +131,11 @@ public class ExcelDiagnosticService {
             }
         }
 
-        // Borders
         if (style.getBorderBottom() != BorderStyle.NONE) props.add("B_BOTT");
         if (style.getBorderTop() != BorderStyle.NONE) props.add("B_TOP");
         if (style.getBorderLeft() != BorderStyle.NONE) props.add("B_LEFT");
         if (style.getBorderRight() != BorderStyle.NONE) props.add("B_RIGHT");
 
-        // Alignment
         if (style.getAlignment() == HorizontalAlignment.CENTER) props.add("CENTER");
         if (style.getRotation() != 0) props.add("ROT:" + style.getRotation());
 

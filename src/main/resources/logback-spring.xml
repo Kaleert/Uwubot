@@ -25,7 +25,7 @@
     <logger name="org.springframework.boot" level="WARN"/>
 
     <!-- Скрываем логи команд и апдейтов (переводим в DEBUG, в консоли видно не будет) -->
-    <logger name="com.kaleert.nyagram.middleware.LoggingMiddleware" level="DEBUG"/>
+    <logger name="pro.kaleert.nyagram.middleware.LoggingMiddleware" level="DEBUG"/>
     <logger name="pro.kaleert.uwubot.service.UpdateService" level="WARN"/>
     
     <!-- Включаем только ошибки парсера, если они есть -->

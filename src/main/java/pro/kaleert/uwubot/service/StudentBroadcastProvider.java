@@ -1,6 +1,6 @@
 package pro.kaleert.uwubot.service;
 
-import com.kaleert.nyagram.feature.broadcast.spi.BroadcastTargetProvider;
+import pro.kaleert.nyagram.feature.broadcast.spi.BroadcastTargetProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import pro.kaleert.uwubot.entity.Student;

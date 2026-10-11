@@ -1,8 +1,8 @@
 package pro.kaleert.uwubot.security;
 
-import com.kaleert.nyagram.api.objects.User;
-import com.kaleert.nyagram.security.spi.UserLevelProvider;
-import com.kaleert.nyagram.security.spi.UserPermissionProvider;
+import pro.kaleert.nyagram.api.objects.User;
+import pro.kaleert.nyagram.security.spi.UserLevelProvider;
+import pro.kaleert.nyagram.security.spi.UserPermissionProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import pro.kaleert.uwubot.config.UwuBotConfig;

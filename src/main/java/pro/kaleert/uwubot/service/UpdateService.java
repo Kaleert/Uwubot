@@ -1,7 +1,7 @@
 package pro.kaleert.uwubot.service;
 
-import com.kaleert.nyagram.client.NyagramClient;
-import com.kaleert.nyagram.api.methods.send.SendMessage;
+import pro.kaleert.nyagram.client.NyagramClient;
+import pro.kaleert.nyagram.api.methods.send.SendMessage;
 import pro.kaleert.uwubot.config.UwuBotConfig;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;

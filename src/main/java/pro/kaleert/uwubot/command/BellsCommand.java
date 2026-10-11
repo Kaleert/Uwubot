@@ -1,8 +1,8 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.command.BotCommand;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.command.CommandHandler;
+import pro.kaleert.nyagram.command.BotCommand;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.command.CommandHandler;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.ParsingMeta;
 import pro.kaleert.uwubot.repository.ParsingMetaRepository;

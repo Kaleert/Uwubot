@@ -1,6 +1,6 @@
 package pro.kaleert.uwubot.config;
 
-import com.kaleert.nyagram.core.spi.NyagramBotConfig;
+import pro.kaleert.nyagram.core.spi.NyagramBotConfig;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Primary;

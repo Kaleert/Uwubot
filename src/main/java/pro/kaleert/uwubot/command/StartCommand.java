@@ -1,24 +1,26 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.api.objects.replykeyboard.ReplyKeyboardMarkup;
-import com.kaleert.nyagram.command.BotCommand;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.command.CommandHandler;
-import com.kaleert.nyagram.util.keyboard.ReplyKeyboardBuilder;
+import pro.kaleert.nyagram.api.objects.replykeyboard.InlineKeyboardMarkup;
+import pro.kaleert.nyagram.callback.annotation.Callback;
+import pro.kaleert.nyagram.command.BotCommand;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.command.CommandHandler;
+import pro.kaleert.nyagram.util.keyboard.InlineKeyboardBuilder;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.Student;
 import pro.kaleert.uwubot.repository.StudentRepository;
+import pro.kaleert.nyagram.fsm.SessionManager;
 
 @BotCommand(value = "/start", description = "Начать работу")
 @RequiredArgsConstructor
 public class StartCommand {
 
     private final StudentRepository studentRepository;
+    private final SessionManager sessionManager;
 
     @CommandHandler
     public void execute(CommandContext context) {
         Long userId = context.getUserId();
-        
         Student student = studentRepository.findById(userId).orElseGet(() -> {
             Student s = new Student();
             s.setUserId(userId);
@@ -28,26 +30,35 @@ public class StartCommand {
         });
         studentRepository.save(student);
 
-        String messageText = """
-        👋 Привет! Я бот с расписанием колледжа.
+        context.reply(getMainMenuText(), "HTML", null, getMainMenuKeyboard());
+    }
+
+    @Callback("cmd:back_to_start")
+    public void onBackToStart(CommandContext context) {
+        sessionManager.clearSession(context.getUserId());
+        context.editMessage(getMainMenuText(), getMainMenuKeyboard());
+    }
+
+    public static String getMainMenuText() {
+        return """
+        👋 <b>Привет! Я бот с расписанием колледжа.</b>
         
         Для начала работы мне нужно знать твою группу.
-        Напиши команду:
-        <code>/group [твоя_группа]</code>
+        Нажми на кнопку ниже или используй команду /group.
         
-        Например: <code>/group И-255</code> или <code>/group 255</code>
+        В <b>Настройках</b> можно включить уведомления, скрыть коды предметов и управлять алиасами.
         
-        Потом можешь воспользоваться кнопками снизу.
-        Также в <b>Настройках</b> можно включить уведомления, коды предметов и управлять алиасами и смотреть расписание других групп:
-        <code>/rasp И-255</code> или <code>/rasp 255</code>.
+        ➖➖➖➖➖➖➖➖➖➖
+        <i>Sponsored by <a href="https://t.me/vpnka_official_bot?start=utm_rasp">VPN-KA</a> (<a href="https://t.me/vpnka_official">Канал</a>)</i>
+        <i>Powered by <a href="https://github.com/kaleert/nyagram">Nyagram</a></i>
         """;
+    }
 
-        ReplyKeyboardMarkup keyboard = ReplyKeyboardBuilder.create()
-                .button("📅 Расписание")
-                .button("⚙️ Настройки")
-                .resize()
+    public static InlineKeyboardMarkup getMainMenuKeyboard() {
+        return InlineKeyboardBuilder.create()
+                .button("📅 Расписание", "cmd:rasp", "primary").row()
+                .button("✍️ Установить группу", "cmd:set_group", "success").row()
+                .button("⚙️ Настройки", "cmd:settings")
                 .build();
-
-        context.reply(messageText, "HTML", null, keyboard);
     }
 }

@@ -1,10 +1,10 @@
 package pro.kaleert.uwubot.command;
 
-import com.kaleert.nyagram.command.BotCommand;
-import com.kaleert.nyagram.command.CommandContext;
-import com.kaleert.nyagram.command.CommandHandler;
-import com.kaleert.nyagram.util.TimeUtil;
-import com.kaleert.nyagram.i18n.LocaleService;
+import pro.kaleert.nyagram.command.BotCommand;
+import pro.kaleert.nyagram.command.CommandContext;
+import pro.kaleert.nyagram.command.CommandHandler;
+import pro.kaleert.nyagram.util.TimeUtil;
+import pro.kaleert.nyagram.i18n.LocaleService;
 import lombok.RequiredArgsConstructor;
 import pro.kaleert.uwubot.entity.ParsingMeta;
 import pro.kaleert.uwubot.repository.LessonRepository;
@@ -13,7 +13,6 @@ import pro.kaleert.uwubot.repository.StudentRepository;
 
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
